@@ -1,6 +1,7 @@
 import glob
 import time
 import socket
+import iphone
 
 images = []
 
@@ -18,11 +19,15 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     while True:
         for im in images:
             time.sleep( max( 0, tt - time.time() ) )
+            header = iphone.Header(
+                message_id=iphone.MessageIDs.CameraFrame,
+                payload_length=len(im),
+                timestamp_sec=int(tt),
+                timestamp_nsec=int(1e9*(tt%1))
+            )
             tt += DELTA_T
-            print(len(im))
             s.send(
-                # First entry in the header is number of bytes of the payload (uint32_t)
-                int(len(im)).to_bytes( length=4, byteorder='big', signed=False ) +
+                bytes( header ) +
                 im 
             )
 

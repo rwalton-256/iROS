@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="port" default="8888" description="Port to use for TCP server"/>
+  <node pkg="iROS" exec="iphone_interface.py" name="iphone_interface">
+    <param name="port" value="$(var port)"/>
+  </node>
+</launch>
