@@ -4,86 +4,135 @@ import serial
 import rclpy
 from rclpy.node import Node
 
-from gps_driver.msg import Customgps
+import sensor_msgs.msg
+import cv_bridge
 
 import asyncio
 import utm
 import datetime
 import traceback
+import socket
+import iphone
+import ctypes
+import numpy as np
+import cv2
+import threading
+import queue
+
+def receive(sock, message_size):
+     chunks = []
+     bytes_recd = 0
+     while bytes_recd < message_size:
+          chunk = sock.recv(min(message_size - bytes_recd, 2048)) # Receive in chunks
+          print(chunk)
+          if not chunk:
+               raise RuntimeError("Socket connection broken")
+          chunks.append(chunk)
+          bytes_recd += len(chunk)
+     return b''.join(chunks)
 
 class StandaloneDriver(Node):
 
     def __init__(self):
         super().__init__('standalone_driver')
-        self.declare_parameter('port',"")
-        self.publisher_ = self.create_publisher(Customgps, '/gps', 10)
+        self.declare_parameter('port',8888)
+        #self.publisher_ = self.create_publisher(Customgps, '/gps', 10)
         self.run_ = True
-        asyncio.run(self.run())
+        self.bridge = cv_bridge.CvBridge()
+        self.thread = threading.Thread(target=self.run)
+        self.thread.start()
 
-    async def run(self):
-        port = self.get_parameter('port').get_parameter_value().string_value
-        sp = serial.Serial(port, 4800)
+    def run(self):
+        port = int(self.get_parameter('port').get_parameter_value().integer_value)
 
-        while True:
-            d = sp.readline().decode('utf-8')
-            if '$GPGGA' not in d:
-                continue
+        self.get_logger().info('HERE 0')
+        tasks = []
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
+            self.socket.bind(('0.0.0.0',port))
+            self.socket.listen()
+            self.get_logger().info(f"Listening for topics on port {port}")
+            while self.run_:
+                tasks.append(threading.Thread(target=self.run_single,args=self.socket.accept()))
+                tasks[-1].start()
+        for task in task:
+            task.join()
 
-            try:
-                utc,lat,lat_dir,lon,lon_dir,quality,sats,hdop,alt = d.split(",")[1:10]
-                dd : datetime.datetime
-                dd = datetime.datetime.combine(
-                    datetime.datetime.now(datetime.timezone.utc).date(),
-                    datetime.time(
-                        hour=int(utc[0:2]),
-                        minute=int(utc[2:4]),
-                        second=int(utc[4:6]),
-                        microsecond=int(float(utc[7:])*1e3)
-                    ),
-                    tzinfo=datetime.timezone.utc
-                )
-                
-                t_sec = int(dd.timestamp()) // 1
-                t_nsec = int(( dd.timestamp() % 1 ) * 1e9)
-                utc = datetime.datetime.strptime(utc,'%H%M%S.%f')
-                hdop = float(hdop)
-                lat = ( float(lat[0:2]) + float(lat[2:]) / 60 ) * ( 1 if lat_dir == "N" else -1 )
-                lon = ( float(lon[0:3]) + float(lon[3:]) / 60 ) * ( 1 if lon_dir == "N" else -1 )
-                alt = float(alt)
-                easting,northing,zone_num,zone_let = utm.from_latlon(lat,lon)
-                self.get_logger().info(f"{d}, {t_sec}, {t_nsec}, {hdop}, {lat}, {lon}, {easting}, {northing}, {zone_num}, {zone_let}")
+    def run_single(self, connection, addr):
+        pub = None
+        iphone_name = ""
+        msg_queue = queue.Queue()
 
-                msg = Customgps()
-                msg.header.frame_id = "GPS1_frame"
-                msg.header.stamp.sec = t_sec
-                msg.header.stamp.nanosec = int(( t_nsec // 1e3 ) * 1e3)
-                msg.latitude = lat
-                msg.longitude = lon
-                msg.altitude = alt
-                msg.utm_easting = easting
-                msg.utm_northing = northing
-                msg.zone = zone_num
-                msg.letter = zone_let
-                msg.hdop = hdop
-                msg.gpgga_read = d
+        def worker():
+            self.get_logger().info(f"In worker!")
+            nonlocal pub
+            nonlocal iphone_name
+            nonlocal msg_queue
+            while True:
+                task = msg_queue.get()
+                if task is None:
+                    break
 
-                self.publisher_.publish(msg)
-            except:
-                pass
+                header, data = task
+
+                match header.message_id:
+                    case iphone.MessageIDs.iPhoneName:
+                        iphone_name = data.decode('utf-8')
+                        pub = self.create_publisher(sensor_msgs.msg.Image,f"/im_{iphone_name}",10)
+                        self.get_logger().info(f"Name: {data}")
+                    case iphone.MessageIDs.CameraFrame:
+                        im_np = np.frombuffer(data,np.uint8)
+                        im_opencv = cv2.imdecode(im_np, cv2.IMREAD_COLOR)
+                        im_ros = self.bridge.cv2_to_imgmsg(im_opencv, encoding="bgr8")
+                        im_ros.header.stamp.sec = header.timestamp_sec
+                        im_ros.header.stamp.nanosec = header.timestamp_nsec
+                        if pub:
+                            self.get_logger().info(f"Publishing...")
+                            pub.publish(im_ros)
+
+                msg_queue.task_done()
+
+        workers = []
+        for i in range(12):
+            workers.append(threading.Thread(target=worker))
+            workers[-1].start()
+
+        try:
+            while self.run_:
+                header = iphone.Header.from_buffer_copy( receive( connection, ctypes.sizeof( iphone.Header ) ) )
+                if header.payload_length:
+                    data = receive( connection, header.payload_length )
+                else:
+                    data = None
+                msg_queue.put((header,data))
+        except RuntimeError:
+            pass
+
+        # Send signal to all workers to stop
+        for i in range(12):
+            msg_queue.put(None)
+        
+        for w in workers:
+            w.join()
 
     def on_shutdown(self):
         self.run_ = False
-
+        self.socket.close()
+        self.thread.join()
 
 def main(args=None):
     rclpy.init(args=args)
 
     minimal_publisher = StandaloneDriver()
 
-    rclpy.spin(minimal_publisher)
+    try:
+        rclpy.spin(minimal_publisher)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        minimal_publisher.on_shutdown()
+        minimal_publisher.destroy_node()
+        rclpy.shutdown()
 
-    minimal_publisher.destroy_node()
-    rclpy.shutdown()
 
 
 if __name__ == '__main__':
