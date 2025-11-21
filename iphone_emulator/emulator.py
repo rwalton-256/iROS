@@ -3,6 +3,7 @@ import time
 import socket
 import iphone
 import numpy as np
+import sys
 
 images = []
 nums = []
@@ -21,7 +22,10 @@ tt = time.time()
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect(('localhost', 8892))
-    iphone_name = "iphone_emulator"
+    try:
+        iphone_name = sys.argv[1]
+    except:
+        iphone_name = "iphone_emulator"
     header = iphone.Header(
         message_id=iphone.MessageIDs.iPhoneName,
         payload_length=len(iphone_name),

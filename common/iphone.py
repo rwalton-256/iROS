@@ -18,3 +18,4 @@ class MessageIDs(enum.IntEnum):
     CameraFrame = 1
     LidarFrame = 2
     GPSMessage = 3
+    IMUMessage = 4

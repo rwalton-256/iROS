@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 
-import serial
 import rclpy
 from rclpy.node import Node
 
 import sensor_msgs.msg
 import cv_bridge
 
-import asyncio
-import utm
-import datetime
-import traceback
 import socket
 import iphone
 import ctypes
@@ -36,7 +31,6 @@ class StandaloneDriver(Node):
     def __init__(self):
         super().__init__('standalone_driver')
         self.declare_parameter('port',8888)
-        #self.publisher_ = self.create_publisher(Customgps, '/gps', 10)
         self.run_ = True
         self.bridge = cv_bridge.CvBridge()
         self.thread = threading.Thread(target=self.run)
@@ -45,7 +39,6 @@ class StandaloneDriver(Node):
     def run(self):
         port = int(self.get_parameter('port').get_parameter_value().integer_value)
 
-        self.get_logger().info('HERE 0')
         tasks = []
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.socket:
             self.socket.bind(('0.0.0.0',port))
@@ -58,13 +51,15 @@ class StandaloneDriver(Node):
             task.join()
 
     def run_single(self, connection, addr):
-        pub = None
+        self.get_logger().info(f"Connection made, remote addr: {addr}")
+        eo_pub = None
+        lidar_pub = None
         iphone_name = ""
         msg_queue = queue.Queue()
 
         def worker():
-            self.get_logger().info(f"In worker!")
-            nonlocal pub
+            nonlocal eo_pub
+            nonlocal lidar_pub
             nonlocal iphone_name
             nonlocal msg_queue
             while True:
@@ -77,17 +72,29 @@ class StandaloneDriver(Node):
                 match header.message_id:
                     case iphone.MessageIDs.iPhoneName:
                         iphone_name = data.decode('utf-8')
-                        pub = self.create_publisher(sensor_msgs.msg.Image,f"/im_{iphone_name}",10)
-                        self.get_logger().info(f"Name: {data}")
+                        eo_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/eo",10)
+                        lidar_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/lidar",10)
+                        self.get_logger().info(f"Name for {addr}: {iphone_name}")
                     case iphone.MessageIDs.CameraFrame:
                         im_np = np.frombuffer(data,np.uint8)
                         im_opencv = cv2.imdecode(im_np, cv2.IMREAD_COLOR)
                         im_ros = self.bridge.cv2_to_imgmsg(im_opencv, encoding="bgr8")
                         im_ros.header.stamp.sec = header.timestamp_sec
                         im_ros.header.stamp.nanosec = header.timestamp_nsec
-                        if pub:
-                            self.get_logger().info(f"Publishing...")
-                            pub.publish(im_ros)
+                        if eo_pub:
+                            eo_pub.publish(im_ros)
+                    case iphone.MessageIDs.LidarFrame:
+                        self.get_logger().info(f"{len(data)} {data[0:4]}")
+                        im_np = np.frombuffer(data,np.float32).reshape((256,192))
+                        im_ros = self.bridge.cv2_to_imgmsg(im_np, encoding="32FC1")
+                        im_ros.header.stamp.sec = header.timestamp_sec
+                        im_ros.header.stamp.nanosec = header.timestamp_nsec
+                        if lidar_pub:
+                            lidar_pub.publish(im_ros)
+                    case iphone.MessageIDs.GPSMessage:
+                        pass
+                    case iphone.MessageIDs.IMUMessage:
+                        pass
 
                 msg_queue.task_done()
 
@@ -106,6 +113,8 @@ class StandaloneDriver(Node):
                 msg_queue.put((header,data))
         except RuntimeError:
             pass
+
+        self.get_logger().info(f"Connection to {iphone_name} {addr} closed!")
 
         # Send signal to all workers to stop
         for i in range(12):
