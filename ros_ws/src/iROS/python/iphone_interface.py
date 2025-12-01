@@ -13,6 +13,8 @@ import numpy as np
 import cv2
 import threading
 import queue
+import PIL
+import io
 
 def receive(sock, message_size):
      chunks = []
@@ -31,6 +33,7 @@ class StandaloneDriver(Node):
     def __init__(self):
         super().__init__('standalone_driver')
         self.declare_parameter('port',8888)
+        self.declare_parameter('lidar_max_distance', 10.0)  # Maximum distance in meters for mapping
         self.run_ = True
         self.bridge = cv_bridge.CvBridge()
         self.thread = threading.Thread(target=self.run)
@@ -47,7 +50,7 @@ class StandaloneDriver(Node):
             while self.run_:
                 tasks.append(threading.Thread(target=self.run_single,args=self.socket.accept()))
                 tasks[-1].start()
-        for task in task:
+        for task in tasks:
             task.join()
 
     def run_single(self, connection, addr):
@@ -56,12 +59,17 @@ class StandaloneDriver(Node):
         lidar_pub = None
         iphone_name = ""
         msg_queue = queue.Queue()
+        max_dist = float(self.get_parameter('lidar_max_distance').get_parameter_value().double_value)
 
         def worker():
             nonlocal eo_pub
             nonlocal lidar_pub
             nonlocal iphone_name
             nonlocal msg_queue
+
+            ci = 0
+            li = 0
+
             while True:
                 task = msg_queue.get()
                 if task is None:
@@ -81,15 +89,23 @@ class StandaloneDriver(Node):
                         im_ros = self.bridge.cv2_to_imgmsg(im_opencv, encoding="bgr8")
                         im_ros.header.stamp.sec = header.timestamp_sec
                         im_ros.header.stamp.nanosec = header.timestamp_nsec
+                        #self.get_logger().info(f"{header.timestamp_nsec*1e-9}")
+                        ci += 1
                         if eo_pub:
                             eo_pub.publish(im_ros)
                     case iphone.MessageIDs.LidarFrame:
-                        self.get_logger().info(f"{len(data)} {data[0:4]}")
-                        im_np = np.frombuffer(data,np.float32).reshape((256,192))
-                        im_ros = self.bridge.cv2_to_imgmsg(im_np, encoding="32FC1")
+                        # Read depth data as float32
+                        # Clip values to max distance and normalize to 0-255
+                        # Closer distances map to higher values (brighter)
+                        print(len(data))
+                        depth_clipped = np.clip(np.frombuffer(data, np.float32).reshape((192, 256)), 0, max_dist)
+                        grayscale = ((max_dist - depth_clipped) / max_dist * 255).astype(np.uint8)
+                        # Convert to ROS image message as mono8
+                        im_ros = self.bridge.cv2_to_imgmsg(grayscale, encoding="mono8")
                         im_ros.header.stamp.sec = header.timestamp_sec
                         im_ros.header.stamp.nanosec = header.timestamp_nsec
-                        if lidar_pub:
+                        li += 1
+                        if eo_pub:
                             lidar_pub.publish(im_ros)
                     case iphone.MessageIDs.GPSMessage:
                         pass
@@ -106,6 +122,7 @@ class StandaloneDriver(Node):
         try:
             while self.run_:
                 header = iphone.Header.from_buffer_copy( receive( connection, ctypes.sizeof( iphone.Header ) ) )
+                self.get_logger().info(f"{header.timestamp_nsec*1e-9}")
                 if header.payload_length:
                     data = receive( connection, header.payload_length )
                 else:

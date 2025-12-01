@@ -4,5 +4,6 @@
   <node pkg="iROS" exec="iphone_interface.py" name="iphone_interface">
     <param name="port" value="$(var port)"/>
   </node>
-  <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer"/>
+  <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_0"/>
+  <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_1"/>
 </launch>
