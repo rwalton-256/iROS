@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
   <arg name="port" default="8888" description="Port to use for TCP server"/>
+  <arg name="iphone_name" default="iPhone" description="Connection Name as set on iPhone app"/>
   <node pkg="iROS" exec="iphone_interface.py" name="iphone_interface">
     <param name="port" value="$(var port)"/>
   </node>
   <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_0"/>
   <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_1"/>
+  <node pkg="iROS" exec="yolo_node.py" name="yolo_node">
+    <param name="iphone_name" value="$(var iphone_name)"/>
+  </node>
 </launch>
