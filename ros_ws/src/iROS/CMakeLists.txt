@@ -18,6 +18,7 @@ install(
   PROGRAMS
     python/iphone_interface.py
     python/yolo_node.py
+    python/slam_node.py
     ${CMAKE_CURRENT_BINARY_DIR}/iphone.py
   DESTINATION
     lib/${PROJECT_NAME}
