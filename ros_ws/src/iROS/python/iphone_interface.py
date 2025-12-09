@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 
 import sensor_msgs.msg
+from sensor_msgs_py import point_cloud2
 # import cv_bridge  # REMOVED
 
 import socket
@@ -123,13 +124,41 @@ class StandaloneDriver(Node):
                         print(len(data))
                         depth_clipped = np.clip(np.frombuffer(data, np.float32).reshape((192, 256)), 0, max_dist)
                         grayscale = ((max_dist - depth_clipped) / max_dist * 255).astype(np.uint8)
+
+                        # LIDAR spects obtained from:
+                        # https://arboreal.se/en/blog/evaluation_of_lidar_sensor_iPhones_iPads
+                        # Focal lengths are set to the whole image unless we want to do a full calibration
+                        focal_length_x = 256
+                        focal_length_y = 192
+                        principal_point_x = focal_length_x / 2
+                        principal_point_y = focal_length_y /2 
+
+                        # Using populated depth_clipped to populate a pointcloud for SLAM
+                        point_cloud = []
+                        for pixel_row in range(192):
+                            for pixel_col in range(256):
+                                depth_value = depth_clipped[pixel_row, pixel_col]
+
+                                # If there's a depth value and it's within the correct range
+                                if depth_value > 0 and depth_value < max_dist:
+                                    point_x = (pixel_col - principal_point_x) * depth_value / focal_length_x # distance from the center, adjusted for focal length
+                                    point_y = (pixel_row - principal_point_y) * depth_value / focal_length_y # same thing
+                                    point_z = depth_value
+                                    point_cloud.append([point_x, point_y, point_z])
+
                         # Convert to ROS image message as mono8
                         im_ros = cv2_to_imgmsg(grayscale, encoding="mono8")
                         im_ros.header.stamp.sec = header.timestamp_sec
                         im_ros.header.stamp.nanosec = header.timestamp_nsec
+
+                        # Just going to use im_ros's fields to populate a new message
+                        if len(point_cloud):
+                            pc2_ros = point_cloud2.create_cloud_xyz32(im_ros.header, point_cloud)
+
                         li += 1
                         if eo_pub:
-                            lidar_pub.publish(im_ros)
+                            lidar_pub.publish(pc2_ros)
+
                     case iphone.MessageIDs.GPSMessage:
                         pass
                     case iphone.MessageIDs.IMUMessage:
