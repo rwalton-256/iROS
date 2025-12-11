@@ -78,6 +78,23 @@ class PointCloudNode(Node):
         self.get_logger().info(f"Created converter: {lidar_topic} -> {pointcloud_topic}")
     
     @staticmethod
+    def filter_points_by_depth(points, max_depth):
+        """Remove points beyond max depth"""
+        if len(points) == 0:
+            return points
+        
+        point_distances = np.linalg.norm(points, axis=1)
+        return points[point_distances < max_depth]
+    
+    @staticmethod
+    def downsample_points(points, downsample_factor):
+        """Simple downsampling by taking every Nth point"""
+        if len(points) == 0:
+            return points
+        
+        return points[::downsample_factor]
+    
+    @staticmethod
     def depth_map_to_pointcloud(depth_map, max_depth, downsample_factor, 
                                 focal_length_x, focal_length_y,
                                 principal_point_x, principal_point_y):
