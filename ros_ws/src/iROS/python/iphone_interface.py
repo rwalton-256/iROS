@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 
 import sensor_msgs.msg
+import std_msgs.msg
 from sensor_msgs_py import point_cloud2
 # import cv_bridge  # REMOVED
 
@@ -55,12 +56,20 @@ class StandaloneDriver(Node):
     def __init__(self):
         super().__init__('standalone_driver')
         self.declare_parameter('port',8888)
+
+        # iPhone LIDAR intrinsics
         self.declare_parameter('lidar_max_distance', 10.0)  # Maximum distance in meters for mapping
+        self.declare_parameter('lidar_downsample_factor', 10)
+        self.declare_parameter('focal_length_x', 256.0)
+        self.declare_parameter('focal_length_y', 192.0)
+        self.declare_parameter('principal_point_x', 128.0)
+        self.declare_parameter('principal_point_y', 96.0)
+
         self.run_ = True
         # self.bridge = cv_bridge.CvBridge()  # REMOVED
         self.thread = threading.Thread(target=self.run)
         self.thread.start()
-
+    
     def run(self):
         port = int(self.get_parameter('port').get_parameter_value().integer_value)
 
@@ -122,15 +131,24 @@ class StandaloneDriver(Node):
                         # Clip values to max distance and normalize to 0-255
                         # Closer distances map to higher values (brighter)
                         print(len(data))
-                        depth_clipped = np.clip(np.frombuffer(data, np.float32).reshape((192, 256)), 0, max_dist)
-                        grayscale = ((max_dist - depth_clipped) / max_dist * 255).astype(np.uint8)
-                        # Convert to ROS image message as mono8
-                        im_ros = cv2_to_imgmsg(grayscale, encoding="mono8")
-                        im_ros.header.stamp.sec = header.timestamp_sec
-                        im_ros.header.stamp.nanosec = header.timestamp_nsec
+                        # Read depth data as float32 (192x256 depth map)
+                        depth_map = np.frombuffer(data, np.float32).reshape((192, 256))
+                        
+                        # Publish raw depth map as 32FC1 Image
+                        depth_image = sensor_msgs.msg.Image()
+                        depth_image.header.stamp.sec = header.timestamp_sec
+                        depth_image.header.stamp.nanosec = header.timestamp_nsec
+                        depth_image.header.frame_id = "camera_depth_optical_frame"
+                        depth_image.height = 192
+                        depth_image.width = 256
+                        depth_image.encoding = "32FC1"  # 32-bit float, 1 channel
+                        depth_image.is_bigendian = 0
+                        depth_image.step = 256 * 4  # 256 pixels * 4 bytes per float32
+                        depth_image.data = depth_map.tobytes()
+                        
                         li += 1
-                        if eo_pub:
-                            lidar_pub.publish(im_ros)
+                        if lidar_pub:
+                            lidar_pub.publish(depth_image)
                     case iphone.MessageIDs.GPSMessage:
                         pass
                     case iphone.MessageIDs.IMUMessage:
