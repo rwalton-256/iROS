@@ -91,27 +91,6 @@ class SlamNode(Node):
             )
         )
 
-    # Convert image data (depth map) to a point cloud
-    # Includes: Filtering, downsampling
-    def depth_map_to_points(self, depth_map):
-        height, width = depth_map.shape
-        point_cloud_data = []
-        
-        # Downsample at source - only process every Nth pixel
-        for pixel_row in range(0, height, self.downsample_factor):
-            for pixel_col in range(0, width, self.downsample_factor):
-                depth_value = depth_map[pixel_row, pixel_col]
-                
-                # Filter: valid depth within range
-                if depth_value > 0 and depth_value < self.max_depth:
-                    # Unproject to 3D using pinhole camera model
-                    point_x = (pixel_col - self.center_x) * depth_value / self.focal_length_x
-                    point_y = (pixel_row - self.center_y) * depth_value / self.focal_length_y
-                    point_z = depth_value
-                    point_cloud_data.append([point_x, point_y, point_z])
-        
-        return np.array(point_cloud_data, dtype=np.float32) if point_cloud_data else np.array([])
-
     # Process depth maps from multiple devices
     # Devices are referenced by topic
     # Includes multiple pass filtering:
