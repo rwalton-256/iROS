@@ -38,6 +38,7 @@ class IMU(ctypes.BigEndianStructure):
 class MessageIDs(enum.IntEnum):
     iPhoneName = 0
     CameraFrame = 1
-    LidarFrame = 2
+    DepthFrame = 2
     IMUMessage = 3
-    GPSMessage = 4
+    CameraInfo = 4
+    GPSMessage = 5

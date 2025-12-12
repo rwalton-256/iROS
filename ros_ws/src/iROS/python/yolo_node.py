@@ -57,7 +57,6 @@ class YoloNode(Node):
     def __init__(self):
         super().__init__('yolo_node')
         self.declare_parameter('iphone_name','iPhone')
-        self.check_topics()
         self.pubs = {}
         self.subs = []
         # In __init__:
@@ -65,6 +64,7 @@ class YoloNode(Node):
         #self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
         self.model.to('cuda' if torch.cuda.is_available() else 'cpu')
         # self.bridge = cv_bridge.CvBridge()  # REMOVED
+        self.check_topics()
 
     def check_topics(self):        
         for node_name in self.get_node_names():
