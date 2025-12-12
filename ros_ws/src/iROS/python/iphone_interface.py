@@ -18,14 +18,13 @@ import queue
 import PIL
 import io
 import scipy.spatial.transform
-import ultralytics
+import json
 
 def receive(sock, message_size):
      chunks = []
      bytes_recd = 0
      while bytes_recd < message_size:
           chunk = sock.recv(min(message_size - bytes_recd, 2048)) # Receive in chunks
-          print(chunk)
           if not chunk:
                raise RuntimeError("Socket connection broken")
           chunks.append(chunk)
@@ -57,9 +56,9 @@ class StandaloneDriver(Node):
         super().__init__('standalone_driver')
         self.declare_parameter('port',8888)
 
-        # iPhone LIDAR intrinsics
-        self.declare_parameter('lidar_max_distance', 10.0)  # Maximum distance in meters for mapping
-        self.declare_parameter('lidar_downsample_factor', 10)
+        # iPhone depth intrinsics
+        self.declare_parameter('depth_max_distance', 10.0)  # Maximum distance in meters for mapping
+        self.declare_parameter('depth_downsample_factor', 10)
         self.declare_parameter('focal_length_x', 256.0)
         self.declare_parameter('focal_length_y', 192.0)
         self.declare_parameter('principal_point_x', 128.0)
@@ -87,16 +86,24 @@ class StandaloneDriver(Node):
     def run_single(self, connection, addr):
         self.get_logger().info(f"Connection made, remote addr: {addr}")
         eo_pub = None
-        lidar_pub = None
+        eo_info_pub = None
+        depth_pub = None
+        depth_info_pub = None
+        imu_pub = None
+        mag_pub = None
         iphone_name = ""
         msg_queue = queue.Queue()
-        max_dist = float(self.get_parameter('lidar_max_distance').get_parameter_value().double_value)
+        max_dist = float(self.get_parameter('depth_max_distance').get_parameter_value().double_value)
 
         def worker():
-            nonlocal eo_pub
-            nonlocal lidar_pub
-            nonlocal iphone_name
             nonlocal msg_queue
+            nonlocal iphone_name
+            nonlocal eo_pub
+            nonlocal eo_info_pub
+            nonlocal depth_pub
+            nonlocal depth_info_pub
+            nonlocal imu_pub
+            nonlocal mag_pub
 
             ci = 0
             li = 0
@@ -112,7 +119,9 @@ class StandaloneDriver(Node):
                     case iphone.MessageIDs.iPhoneName:
                         iphone_name = data.decode('utf-8')
                         eo_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/eo",10)
-                        lidar_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/lidar",10)
+                        eo_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/eo_info",10)
+                        depth_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/depth",10)
+                        depth_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/depth_info",10)
                         imu_pub = self.create_publisher(sensor_msgs.msg.Imu,f"/iphone/{iphone_name}/imu",10)
                         mag_pub = self.create_publisher(sensor_msgs.msg.MagneticField,f"/iphone/{iphone_name}/mag",10)
                         self.get_logger().info(f"Name for {addr}: {iphone_name}")
@@ -126,11 +135,10 @@ class StandaloneDriver(Node):
                         ci += 1
                         if eo_pub:
                             eo_pub.publish(im_ros)
-                    case iphone.MessageIDs.LidarFrame:
+                    case iphone.MessageIDs.DepthFrame:
                         # Read depth data as float32
                         # Clip values to max distance and normalize to 0-255
                         # Closer distances map to higher values (brighter)
-                        print(len(data))
                         # Read depth data as float32 (192x256 depth map)
                         depth_map = np.frombuffer(data, np.float32).reshape((192, 256))
                         
@@ -145,10 +153,60 @@ class StandaloneDriver(Node):
                         depth_image.is_bigendian = 0
                         depth_image.step = 256 * 4  # 256 pixels * 4 bytes per float32
                         depth_image.data = depth_map.tobytes()
-                        
+                        depth_image.header.stamp.sec = header.timestamp_sec
+                        depth_image.header.stamp.nanosec = header.timestamp_nsec
+
                         li += 1
-                        if lidar_pub:
-                            lidar_pub.publish(depth_image)
+                        if depth_pub:
+                            depth_pub.publish(depth_image)
+                    case iphone.MessageIDs.CameraInfo:
+                        msg = json.loads(data.decode('utf-8'))
+                        # Reshape the matrix
+                        K = np.array(msg['camera_matrix']).reshape((3,3)).T
+                        self.get_logger().info(f"Cam matrix: {K}")
+
+                        eo_info = sensor_msgs.msg.CameraInfo()
+
+                        eo_info.distortion_model = 'pinhole'
+                        eo_info.height = msg['image_height']
+                        eo_info.width = msg['image_width']
+                        eo_info.k = K.flatten()
+                        eo_info.r = [1,0,0,0,1,0,0,0,1]
+                        cam_spacing = 140 # mm
+                        eo_info.p = [
+                            *K[0,:], 0,
+                            *K[1,:], -K[1,1] * cam_spacing,
+                            *K[2,:], 0
+                        ]
+
+                        sx = 256 / msg['image_width']
+                        sy = 192 / msg['image_height']
+
+                        K[0,:] *= sx
+                        K[1,:] *= sy
+
+                        depth_info = sensor_msgs.msg.CameraInfo()
+
+                        depth_info.distortion_model = 'pinhole'
+                        depth_info.height = 192
+                        depth_info.width = 256
+                        depth_info.k = K.flatten()
+                        depth_info.r = [1,0,0,0,1,0,0,0,1]
+                        cam_spacing = 140 # mm
+                        depth_info.p = [
+                            *K[0,:], 0,
+                            *K[1,:], -K[1,1] * cam_spacing,
+                            *K[2,:], 0
+                        ]
+
+                        depth_info.header.stamp.sec = eo_info.header.stamp.sec = header.timestamp_sec
+                        depth_info.header.stamp.nanosec = eo_info.header.stamp.nanosec = header.timestamp_nsec
+
+                        if eo_info_pub:
+                            eo_info_pub.publish(eo_info)
+                        if depth_info_pub:
+                            depth_info_pub.publish(depth_info)
+
                     case iphone.MessageIDs.GPSMessage:
                         pass
                     case iphone.MessageIDs.IMUMessage:

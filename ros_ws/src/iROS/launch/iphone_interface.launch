@@ -1,13 +1,54 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
+  <!-- Arguments -->
   <arg name="port" default="8888" description="Port to use for TCP server"/>
   <arg name="iphone_name" default="iPhone" description="Connection Name as set on iPhone app"/>
-  <node pkg="iROS" exec="iphone_interface.py" name="iphone_interface">
+  
+  <!-- iPhone Interface Node -->
+  <node pkg="iROS" exec="iphone_interface.py" name="iphone_interface" output="screen">
     <param name="port" value="$(var port)"/>
   </node>
+  
+  <!-- Image Viewers -->
+  <!--
   <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_0"/>
   <node pkg="rqt_image_view" exec="rqt_image_view" name="im_viewer_1"/>
-  <node pkg="iROS" exec="yolo_node.py" name="yolo_node">
+  -->
+  
+  <!-- YOLO Node -->
+  <!--
+  <node pkg="iROS" exec="yolo_node.py" name="yolo_node" output="screen">
     <param name="iphone_name" value="$(var iphone_name)"/>
   </node>
+  -->
+  
+  <!-- Rectify Left EO (Camera) -->
+  <node pkg="image_proc" exec="rectify_node" name="rectify_left_eo" output="screen">
+    <remap from="image" to="/iphone/left/eo"/>
+    <remap from="camera_info" to="/iphone/left/eo_info"/>
+    <remap from="image_rect" to="/iphone/left/eo_rect"/>
+  </node>
+  
+  <!-- Rectify Left depth -->
+  <node pkg="image_proc" exec="rectify_node" name="rectify_left_depth" output="screen">
+    <remap from="image" to="/iphone/left/depth"/>
+    <remap from="camera_info" to="/iphone/left/depth_info"/>
+    <remap from="image_rect" to="/iphone/left/depth_rect"/>
+  </node>
+  
+  <!-- Make pointcloud -->
+  <node pkg="depth_image_proc" exec="point_cloud_xyz_node" name="left_pc" output="screen">
+    <remap from="image_rect" to="/iphone/left/depth_rect"/>
+    <remap from="camera_info" to="/iphone/left/depth_info"/>
+    <remap from="points" to="/iphone/left/points"/>
+  </node>
+
+  <!--
+  <node pkg="depth_image_proc" exec="point_cloud_xyzrgb_node" name="left_pc" output="screen">
+    <remap from="depth_registered/image_rect" to="/iphone/left/depth_rect"/>
+    <remap from="rgb/image_rect_color" to="/iphone/left/eo_rect"/>
+    <remap from="rgb/camera_info" to="/iphone/left/camera_info"/>
+    <remap from="points" to="/iphone/left/points"/>
+  </node>
+  -->
 </launch>
