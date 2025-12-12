@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- This launch file will bag all of the raw topics coming from the iphone_interface node -->
+  <arg name="iphone_name" default="iPhone" description="Connection Name as set on iPhone app"/>
+
+  <executable cmd="ros2 bag record --topics /iphone/$(var iphone_name)/eo/raw /iphone/$(var iphone_name)/eo/camera_info /iphone/$(var iphone_name)/depth/raw /iphone/$(var iphone_name)/depth/camera_info /iphone/$(var iphone_name)/imu /iphone/$(var iphone_name)/mag" output="screen"/>
+</launch>

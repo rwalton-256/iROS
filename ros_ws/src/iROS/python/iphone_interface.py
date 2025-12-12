@@ -172,10 +172,10 @@ class StandaloneDriver(Node):
                         eo_info.width = msg['image_width']
                         eo_info.k = K.flatten()
                         eo_info.r = [1,0,0,0,1,0,0,0,1]
-                        cam_spacing = 140 # mm
+                        cam_spacing = 0.140 # mm
                         eo_info.p = [
                             *K[0,:], 0,
-                            *K[1,:], -K[1,1] * cam_spacing,
+                            *K[1,:], K[1,1] * cam_spacing if iphone_name == "right" else 0,
                             *K[2,:], 0
                         ]
 
@@ -192,10 +192,9 @@ class StandaloneDriver(Node):
                         depth_info.width = 256
                         depth_info.k = K.flatten()
                         depth_info.r = [1,0,0,0,1,0,0,0,1]
-                        cam_spacing = 140 # mm
                         depth_info.p = [
                             *K[0,:], 0,
-                            *K[1,:], -K[1,1] * cam_spacing,
+                            *K[1,:], K[1,1] * cam_spacing if iphone_name == "right" else 0,
                             *K[2,:], 0
                         ]
 

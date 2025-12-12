@@ -20,17 +20,15 @@
   <node pkg="iROS" exec="yolo_node.py" name="yolo_node" output="screen">
     <param name="iphone_name" value="$(var iphone_name)"/>
   </node>
+  -->
 
-    -->
-    
-  <node pkg="stereo_image_proc" type="stereo_image_proc" name="stereo_image_proc">
+  <node pkg="stereo_image_proc" exec="point_cloud_node" name="stereo_image_proc">
     <remap from="left/image_raw" to="/iphone/left/eo"/>
     <remap from="left/camera_info" to="/ihpone/left/camera_info"/>
     <remap from="right/image_raw" to="/iphone/right/eo"/>
     <remap from="right/camera_info" to="/iphone/right/camera_info"/>
-</node>
+  </node>
 
-  
   <!-- Rectify Left EO (Camera) -->
   <node pkg="image_proc" exec="rectify_node" name="rectify_left_eo" output="screen">
     <remap from="image" to="/iphone/left/eo/raw"/>
@@ -70,5 +68,4 @@
   <!-- Launch RViz -->
   <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
     args="-d $(find-pkg-share iROS)/rviz/config.rviz"/>
-
 </launch>
