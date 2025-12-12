@@ -33,31 +33,42 @@
   
   <!-- Rectify Left EO (Camera) -->
   <node pkg="image_proc" exec="rectify_node" name="rectify_left_eo" output="screen">
-    <remap from="image" to="/iphone/left/eo"/>
-    <remap from="camera_info" to="/iphone/left/eo_info"/>
-    <remap from="image_rect" to="/iphone/left/eo_rect"/>
+    <remap from="image" to="/iphone/left/eo/raw"/>
+    <remap from="image_rect" to="/iphone/left/eo/rect"/>
   </node>
-  
+
   <!-- Rectify Left depth -->
   <node pkg="image_proc" exec="rectify_node" name="rectify_left_depth" output="screen">
-    <remap from="image" to="/iphone/left/depth"/>
-    <remap from="camera_info" to="/iphone/left/depth_info"/>
-    <remap from="image_rect" to="/iphone/left/depth_rect"/>
+    <remap from="image" to="/iphone/left/depth/raw"/>
+    <remap from="image_rect" to="/iphone/left/depth/rect"/>
   </node>
-  
+
+  <!-- Make decimated eo image stream -->
+  <node pkg="image_proc" exec="resize_node" name="resize_left_eo" output="screen">
+    <remap from="image/image_raw" to="/iphone/left/eo/rect"/>
+    <remap from="image/camera_info" to="/iphone/left/eo/camera_info"/>
+    <remap from="resize/image_raw" to="/iphone/left/eo/resized/image"/>
+    <remap from="resize/camera_info" to="/iphone/left/eo/resized/camera_info"/>
+    <param name="use_scale" value="false"/>
+    <param name="width" value="256"/>
+    <param name="height" value="192"/>
+    <param name="interpolation" value="1"/>
+  </node>
+
   <!-- Make pointcloud -->
-  <node pkg="depth_image_proc" exec="point_cloud_xyz_node" name="left_pc" output="screen">
-    <remap from="image_rect" to="/iphone/left/depth_rect"/>
-    <remap from="camera_info" to="/iphone/left/depth_info"/>
+  <node pkg="depth_image_proc" exec="point_cloud_xyzrgb_node" name="left_pc" output="screen">
+    <remap from="depth_registered/image_rect" to="/iphone/left/depth/rect"/>
+    <remap from="rgb/image_rect_color" to="/iphone/left/eo/resized/image"/>
+    <remap from="rgb/camera_info" to="/iphone/left/eo/resized/camera_info"/>
     <remap from="points" to="/iphone/left/points"/>
   </node>
 
-  <!--
-  <node pkg="depth_image_proc" exec="point_cloud_xyzrgb_node" name="left_pc" output="screen">
-    <remap from="depth_registered/image_rect" to="/iphone/left/depth_rect"/>
-    <remap from="rgb/image_rect_color" to="/iphone/left/eo_rect"/>
-    <remap from="rgb/camera_info" to="/iphone/left/camera_info"/>
-    <remap from="points" to="/iphone/left/points"/>
-  </node>
-  -->
+  <!-- Static transform publisher -->
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="static_tf_pub_map_to_world"
+        args="--x 0 --y 0 --z 0 --roll 0 --pitch 0 --yaw 0 --frame-id map --child-frame-id camera_depth_optical_frame"/>
+  
+  <!-- Launch RViz -->
+  <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
+    args="-d $(find-pkg-share iROS)/rviz/config.rviz"/>
+
 </launch>

@@ -118,10 +118,10 @@ class StandaloneDriver(Node):
                 match header.message_id:
                     case iphone.MessageIDs.iPhoneName:
                         iphone_name = data.decode('utf-8')
-                        eo_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/eo",10)
-                        eo_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/eo_info",10)
-                        depth_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/depth",10)
-                        depth_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/depth_info",10)
+                        eo_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/eo/raw",10)
+                        eo_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/eo/camera_info",10)
+                        depth_pub = self.create_publisher(sensor_msgs.msg.Image,f"/iphone/{iphone_name}/depth/raw",10)
+                        depth_info_pub = self.create_publisher(sensor_msgs.msg.CameraInfo,f"/iphone/{iphone_name}/depth/camera_info",10)
                         imu_pub = self.create_publisher(sensor_msgs.msg.Imu,f"/iphone/{iphone_name}/imu",10)
                         mag_pub = self.create_publisher(sensor_msgs.msg.MagneticField,f"/iphone/{iphone_name}/mag",10)
                         self.get_logger().info(f"Name for {addr}: {iphone_name}")
